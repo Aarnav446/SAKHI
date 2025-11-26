@@ -1,0 +1,5 @@
+{
+  "name": "ESP32-CAM React Controller",
+  "description": "A modern React application to control, view, and record data from an ESP32-CAM module. Features MJPEG streaming, frame capturing, and camera control integration.",
+  "requestFramePermissions": []
+}
