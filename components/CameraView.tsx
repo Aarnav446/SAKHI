@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { toggleSdRecording } from '../services/cameraService';
+import React, { useState, useEffect, useRef } from 'react';
+import { toggleSdRecording, getStreamUrl } from '../services/cameraService';
 
 interface CameraViewProps {
   ip: string;
@@ -9,32 +9,52 @@ interface CameraViewProps {
 const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [streamError, setStreamError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   
-  // Construct the stream URL. 
-  const streamUrl = `http://${ip}:81/stream`; 
+  // Use a ref to track if we should keep retrying
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Construct the stream URL with a timestamp to prevent caching
+  const getTimestampedUrl = () => {
+    const baseUrl = getStreamUrl(ip);
+    return `${baseUrl}?t=${new Date().getTime()}`;
+  };
+
+  const [currentStreamUrl, setCurrentStreamUrl] = useState(getTimestampedUrl());
 
   const handleToggleRecord = async () => {
-    // Optimistic UI update or wait for result? 
-    // Let's wait for result to ensure device actually received command.
     const targetState = !isRecording;
-    
     const success = await toggleSdRecording(ip, targetState);
     
     if (success) {
       setIsRecording(targetState);
     } else {
-      alert("Failed to send command to camera. Please check:\n1. You are connected to the ESP32 WiFi.\n2. The ESP32 is powered on.");
+      alert("Failed to send command to camera. Please check:\n1. You are connected to the ESP32 WiFi.\n2. The ESP32 is powered on.\n3. Mobile Data is OFF.");
     }
+  };
+
+  const handleStreamError = () => {
+    setStreamError(true);
+    // Auto-retry after 3 seconds if error occurs
+    if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+    
+    retryTimeoutRef.current = setTimeout(() => {
+      handleReload();
+    }, 3000);
   };
 
   const handleReload = () => {
     setStreamError(false);
-    // Force image reload by appending timestamp
-    const img = document.getElementById('mjpeg-stream') as HTMLImageElement;
-    if (img) {
-      img.src = `${streamUrl}?t=${new Date().getTime()}`;
-    }
+    setRetryCount(c => c + 1);
+    setCurrentStreamUrl(getTimestampedUrl());
   };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-screen max-w-6xl mx-auto p-4 md:p-6 gap-6">
@@ -58,41 +78,41 @@ const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
       <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
         
         {/* Stream View */}
-        <div className="flex-[3] bg-black rounded-2xl overflow-hidden shadow-2xl relative border border-gray-700 group flex items-center justify-center">
+        <div className="flex-[3] bg-black rounded-2xl overflow-hidden shadow-2xl relative border border-gray-700 group flex items-center justify-center min-h-[300px]">
           {!streamError ? (
             <img 
-              id="mjpeg-stream"
-              src={streamUrl} 
+              key={retryCount} // Force re-render on retry
+              src={currentStreamUrl} 
               alt="Live Stream" 
               className="w-full h-full object-contain"
-              onError={() => setStreamError(true)}
+              onError={handleStreamError}
             />
           ) : (
-            <div className="text-center p-8 text-gray-400">
+            <div className="text-center p-8 text-gray-400 flex flex-col items-center">
+              <svg className="w-12 h-12 mb-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              </svg>
               <p className="text-xl font-bold mb-2">Stream Offline</p>
-              <p className="text-sm mb-4">Cannot connect to {streamUrl}</p>
+              <p className="text-sm mb-4">Connecting to {ip}:81...</p>
+              <p className="text-xs text-yellow-500 mb-6 max-w-xs">
+                Tip: Turn OFF "Mobile Data" on your phone. Android may block local WiFi if it has no internet.
+              </p>
               <button 
                 onClick={handleReload}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm"
+                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all"
               >
-                Retry Connection
+                Retry Now
               </button>
             </div>
           )}
 
           {/* Recording Indicator Overlay */}
           {isRecording && (
-            <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500/90 text-white px-3 py-1.5 rounded-full backdrop-blur-sm animate-pulse">
+            <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500/90 text-white px-3 py-1.5 rounded-full backdrop-blur-sm animate-pulse shadow-lg z-10">
               <div className="w-3 h-3 bg-white rounded-full"></div>
               <span className="text-xs font-bold tracking-wider">REC</span>
             </div>
           )}
-
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
-             <div className="text-xs text-gray-300">
-               <p>MJPEG STREAM</p>
-             </div>
-          </div>
         </div>
 
         {/* Controls */}
@@ -139,7 +159,7 @@ const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
             1. Ensure ESP32 is powered and red LED (if any) indicates readiness.<br/>
             2. Connect your device to the <strong>ESP32-CAM-Connect</strong> WiFi.<br/>
             3. Recording saves AVI or JPEG sequences to SD root.<br/>
-            4. If stream lags, refresh the page.
+            4. If stream fails, check if Mobile Data is OFF.
           </div>
 
         </div>
