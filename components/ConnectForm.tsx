@@ -5,7 +5,8 @@ interface ConnectFormProps {
 }
 
 const ConnectForm: React.FC<ConnectFormProps> = ({ onConnect }) => {
-  const [ip, setIp] = useState('');
+  // Default to the standard ESP32 AP IP address
+  const [ip, setIp] = useState('192.168.4.1');
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -33,7 +34,7 @@ const ConnectForm: React.FC<ConnectFormProps> = ({ onConnect }) => {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-white mb-2">Connect Camera</h1>
-          <p className="text-gray-400 text-sm">Enter the local IP address of your ESP32-CAM</p>
+          <p className="text-gray-400 text-sm">Connect to "ESP32-CAM-Connect" WiFi first</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -74,7 +75,7 @@ const ConnectForm: React.FC<ConnectFormProps> = ({ onConnect }) => {
         </form>
 
         <div className="mt-8 pt-6 border-t border-gray-700 text-xs text-gray-500 text-center">
-          Make sure your device is connected to the same WiFi network as the ESP32.
+          Default IP for AP Mode is <strong>192.168.4.1</strong>
         </div>
       </div>
     </div>
