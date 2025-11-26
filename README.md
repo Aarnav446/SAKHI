@@ -1,33 +1,44 @@
-# ESP32-CAM React Controller
+# ESP32-CAM Supabase Controller
 
 ## Quick Start
 
 1.  **Install Dependencies**
     ```bash
     npm install
+    npm install @supabase/supabase-js
     ```
 
-2.  **Run Development Server**
+2.  **Supabase Setup**
+    *   Create a project at [supabase.com](https://supabase.com).
+    *   Go to **SQL Editor** and run:
+        ```sql
+        create table camera_stream (
+          id int primary key,
+          photo text,
+          sensor jsonb,
+          updated_at timestamptz default now()
+        );
+        insert into camera_stream (id, photo, sensor) values (1, '', '{}');
+        alter publication supabase_realtime add table camera_stream;
+        ```
+    *   Get your **Project URL** and **Anon Key** from Project Settings > API.
+
+3.  **Run Development Server**
     ```bash
     npm run dev
     ```
 
-3.  **Setup ESP32-CAM**
-    *   Ensure your ESP32-CAM is flashed with a sketch that creates a SoftAP (Hotspot) or connects to your router.
-    *   Example sketch: standard `CameraWebServer` example in Arduino IDE.
-    *   **Crucial**: If running locally on your PC, you must connect your PC's WiFi to the ESP32-CAM's Hotspot, OR ensure the ESP32 is on the same router network as your PC.
-
-4.  **Connect**
-    *   Open the app (usually `http://localhost:5173`).
-    *   Enter the IP of the ESP32-CAM.
-        *   If in AP Mode (Hotspot): Default is often `192.168.4.1`.
-        *   If in Station Mode (Router): Check your Serial Monitor for the assigned IP (e.g., `192.168.1.50`).
+4.  **Flash ESP32**
+    *   Use the provided Arduino code.
+    *   Update `supabase_url` and `supabase_key` in the C++ code.
+    *   The ESP32 must have internet access (via Hotspot or Router).
 
 ## Troubleshooting
 
-*   **No Image / Stream Broken**:
-    *   Check if you are connected to the correct WiFi.
-    *   Check the browser console (F12) for Mixed Content errors (trying to load HTTP resource from HTTPS site). Browsers like Chrome might block `http://192.168...` if the React app is served via HTTPS. Use HTTP for local dev.
-*   **CORS Errors**:
-    *   If you see "Access-Control-Allow-Origin" errors in the console when clicking Connect or Record, the ESP32 sketch needs to send these headers.
-    *   *Workaround*: You can usually load the MJPEG stream (`<img src>`) without CORS, but fetch requests (`/capture`) strictly require CORS or a proxy.
+*   **No Image**:
+    *   Verify the table name is `camera_stream`.
+    *   Ensure Realtime is enabled (`alter publication...`).
+    *   If images are too large (HD/SVGA), Supabase Realtime might drop the message. Use QVGA (320x240).
+*   **Connection Failed**:
+    *   Check if your Anon Key is correct.
+    *   Check browser console for 401/404 errors.

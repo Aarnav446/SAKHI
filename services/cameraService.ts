@@ -1,68 +1,90 @@
 /**
- * SERVICE LAYER EXPLANATION
+ * SERVICE LAYER: SUPABASE REALTIME
  * 
- * This file handles all direct HTTP communication with the ESP32.
- * 
- * 1. Fetch Calls: 
- *    We use the native `fetch` API. 
- *    Note on CORS: The ESP32-CAM default example sketches usually rely on simple HTTP.
- *    If your React app is served via HTTPS (rare for local dev) and ESP32 is HTTP, 
- *    you will get Mixed Content errors. Ensure both are HTTP for local testing.
- *    Additionally, the ESP32 must support CORS headers (Access-Control-Allow-Origin: *)
- *    if the domains/ports differ, which they do (localhost:5173 vs 192.168.x.x).
- *    Most modern browser settings or extensions can bypass this for dev, 
- *    or modify the ESP32 code to send these headers.
- * 
- * 2. MJPEG Stream:
- *    The stream is NOT fetched via JS. It is loaded directly into an <img> tag.
- *    The browser handles the multipart/x-mixed-replace content type automatically.
+ * We use the Supabase JS client to listen to Postgres changes.
+ * The ESP32 updates row id=1 via REST API.
+ * The Frontend receives the 'UPDATE' event via WebSocket.
  */
 
-export const getStreamUrl = (ip: string): string => {
-  // Removes trailing slashes and adds protocol if missing
-  const cleanIp = ip.replace(/\/$/, '').replace(/^https?:\/\//, '');
-  return `http://${cleanIp}/stream`;
-};
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { CloudData, SupabaseCredentials } from '../types';
 
-export const getBaseUrl = (ip: string): string => {
-  const cleanIp = ip.replace(/\/$/, '').replace(/^https?:\/\//, '');
-  return `http://${cleanIp}`;
-};
+let supabase: SupabaseClient | null = null;
+let subscription: any = null;
 
 /**
- * Captures a single still frame from the camera.
- * Used for the "Recording" simulation.
+ * Initializes the Supabase client and checks connection
  */
-export const captureFrame = async (ip: string): Promise<Blob> => {
-  const url = `${getBaseUrl(ip)}/capture?t=${Date.now()}`; // Add timestamp to prevent caching
-  const response = await fetch(url);
-  
-  if (!response.ok) {
-    throw new Error(`Failed to capture frame: ${response.statusText}`);
-  }
-  
-  return await response.blob();
-};
-
-/**
- * Checks if the camera is online by hitting the status endpoint.
- */
-export const checkConnection = async (ip: string): Promise<boolean> => {
+export const checkConnection = async (creds: SupabaseCredentials): Promise<boolean> => {
   try {
-    const url = `${getBaseUrl(ip)}/status`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(2000) }); // 2s timeout
-    return response.ok;
+    supabase = createClient(creds.url, creds.key);
+    
+    // Simple query to verify credentials and table existence
+    const { data, error } = await supabase
+      .from('camera_stream')
+      .select('id')
+      .eq('id', 1)
+      .single();
+      
+    if (error) throw error;
+    return true;
   } catch (e) {
-    console.error("Connection check failed:", e);
+    console.error("Supabase connection check failed:", e);
     return false;
   }
 };
 
 /**
- * Sends a control command to the ESP32.
- * endpoint: /control?var=framesize&val=5
+ * Subscribes to Realtime changes on the 'camera_stream' table.
  */
-export const setControl = async (ip: string, variable: string, value: number): Promise<void> => {
-  const url = `${getBaseUrl(ip)}/control?var=${variable}&val=${value}`;
-  await fetch(url);
+export const subscribeToStream = (
+  creds: SupabaseCredentials, 
+  onData: (data: CloudData) => void,
+  onError: (err: any) => void
+) => {
+  if (!supabase) {
+    supabase = createClient(creds.url, creds.key);
+  }
+
+  // Clean up previous subscription
+  if (subscription) {
+    supabase.removeChannel(subscription);
+  }
+
+  // Subscribe to UPDATE events on row with id=1
+  const channel = supabase.channel('esp32-stream')
+    .on(
+      'postgres_changes',
+      { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'camera_stream', 
+        filter: 'id=eq.1' 
+      },
+      (payload) => {
+        // payload.new contains the updated row
+        const newData = payload.new as any;
+        // Map database columns to our CloudData type
+        onData({
+          photo: newData.photo,
+          sensor: newData.sensor
+        });
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log("Connected to Supabase Realtime");
+      }
+      if (status === 'CHANNEL_ERROR') {
+        onError("Failed to connect to Realtime channel");
+      }
+    });
+
+  subscription = channel;
+
+  return () => {
+    if (supabase && subscription) {
+      supabase.removeChannel(subscription);
+    }
+  };
 };

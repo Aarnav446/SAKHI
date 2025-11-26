@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { checkConnection } from '../services/cameraService';
+import { SupabaseCredentials } from '../types';
 
 interface ConnectFormProps {
-  onConnect: (ip: string) => void;
+  onConnect: (creds: SupabaseCredentials) => void;
 }
 
 const ConnectForm: React.FC<ConnectFormProps> = ({ onConnect }) => {
-  const [ipInput, setIpInput] = useState('192.168.4.1');
+  const [url, setUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,23 +18,24 @@ const ConnectForm: React.FC<ConnectFormProps> = ({ onConnect }) => {
     setError(null);
 
     // Basic validation
-    if (!ipInput.trim()) {
-      setError("Please enter an IP address.");
+    if (!url.includes("supabase.co")) {
+      setError("Please enter a valid Supabase Project URL.");
+      setIsLoading(false);
+      return;
+    }
+    if (apiKey.length < 20) {
+      setError("Please enter a valid Anon Key.");
       setIsLoading(false);
       return;
     }
 
-    // Try to ping the camera before 'connecting'
-    const isOnline = await checkConnection(ipInput);
+    const creds = { url, key: apiKey };
+    const isOnline = await checkConnection(creds);
     
     if (isOnline) {
-      onConnect(ipInput);
+      onConnect(creds);
     } else {
-      // In many cases with ESP32 CORS issues, fetch might fail even if it's there.
-      // We allow the user to force connect if they believe the IP is correct,
-      // or we display a warning. For this demo, we'll show an error but allow a "Force Connect" option implicitly?
-      // No, let's keep it simple: Show error.
-      setError("Could not reach camera. Check IP and ensure you are on the same Wi-Fi (Hotspot). Check browser console for CORS errors.");
+      setError("Connection failed. Check your URL, Key, and ensure the 'camera_stream' table exists.");
     }
     
     setIsLoading(false);
@@ -40,24 +43,38 @@ const ConnectForm: React.FC<ConnectFormProps> = ({ onConnect }) => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
-      <div className="w-full max-w-md bg-gray-800 p-8 rounded-2xl shadow-2xl border border-gray-700">
+      <div className="w-full max-w-lg bg-gray-800 p-8 rounded-2xl shadow-2xl border border-gray-700">
         <div className="mb-6 text-center">
-          <h1 className="text-3xl font-bold text-teal-400 mb-2">ESP32-CAM Hub</h1>
-          <p className="text-gray-400">Connect to your camera's Wi-Fi hotspot first.</p>
+          <h1 className="text-3xl font-bold text-green-400 mb-2">Supabase IoT Hub</h1>
+          <p className="text-gray-400">Secure ESP32 Streaming via Postgres.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="ip" className="block text-sm font-medium text-gray-300 mb-1">
-              Camera IP Address
+            <label htmlFor="url" className="block text-sm font-medium text-gray-300 mb-1">
+              Project URL
             </label>
             <input
-              id="ip"
+              id="url"
               type="text"
-              value={ipInput}
-              onChange={(e) => setIpInput(e.target.value)}
-              placeholder="e.g. 192.168.4.1"
-              className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all placeholder-gray-600"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://xyz.supabase.co"
+              className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all placeholder-gray-600"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="key" className="block text-sm font-medium text-gray-300 mb-1">
+              API Key (public/anon)
+            </label>
+            <input
+              id="key"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5..."
+              className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all placeholder-gray-600"
             />
           </div>
 
@@ -73,19 +90,19 @@ const ConnectForm: React.FC<ConnectFormProps> = ({ onConnect }) => {
             className={`w-full py-3 px-4 rounded-lg font-bold text-lg shadow-lg transition-all transform hover:scale-[1.02] ${
               isLoading 
                 ? 'bg-gray-600 cursor-not-allowed text-gray-400' 
-                : 'bg-teal-500 hover:bg-teal-400 text-gray-900'
+                : 'bg-green-500 hover:bg-green-400 text-gray-900'
             }`}
           >
-            {isLoading ? 'Connecting...' : 'Connect to Camera'}
+            {isLoading ? 'Verifying...' : 'Connect to Supabase'}
           </button>
         </form>
 
         <div className="mt-8 pt-6 border-t border-gray-700 text-xs text-gray-500">
-          <p className="font-semibold mb-1">How to use:</p>
+          <p className="font-semibold mb-1">Architecture:</p>
           <ol className="list-decimal pl-4 space-y-1">
-            <li>Power on ESP32-CAM.</li>
-            <li>Connect your device to ESP32's WiFi hotspot.</li>
-            <li>Enter the IP (usually 192.168.4.1).</li>
+            <li>ESP32 PATCHes row <code>id=1</code> in <code>camera_stream</code>.</li>
+            <li>Supabase broadcasts UPDATE via Realtime.</li>
+            <li>React app displays the new Base64 image.</li>
           </ol>
         </div>
       </div>

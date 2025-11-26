@@ -1,25 +1,26 @@
 import React, { useState } from 'react';
 import ConnectForm from './components/ConnectForm';
 import CameraView from './components/CameraView';
+import { SupabaseCredentials } from './types';
 
 const App: React.FC = () => {
-  // State to store the connected ESP32 IP address
-  const [ipAddress, setIpAddress] = useState<string | null>(null);
+  // State to store the Supabase Credentials
+  const [creds, setCreds] = useState<SupabaseCredentials | null>(null);
 
-  const handleConnect = (ip: string) => {
-    setIpAddress(ip);
+  const handleConnect = (credentials: SupabaseCredentials) => {
+    setCreds(credentials);
   };
 
   const handleDisconnect = () => {
-    setIpAddress(null);
+    setCreds(null);
   };
 
   return (
     <div className="min-h-screen w-full">
-      {!ipAddress ? (
+      {!creds ? (
         <ConnectForm onConnect={handleConnect} />
       ) : (
-        <CameraView ip={ipAddress} onDisconnect={handleDisconnect} />
+        <CameraView creds={creds} onDisconnect={handleDisconnect} />
       )}
     </div>
   );
