@@ -1,116 +1,147 @@
-import React, { useState, useEffect } from 'react';
-import { subscribeToStream } from '../services/cameraService';
-import { CloudData, SupabaseCredentials } from '../types';
+import React, { useState, useRef } from 'react';
+import { toggleSdRecording } from '../services/cameraService';
 
 interface CameraViewProps {
-  creds: SupabaseCredentials;
+  ip: string;
   onDisconnect: () => void;
 }
 
-const CameraView: React.FC<CameraViewProps> = ({ creds, onDisconnect }) => {
-  const [data, setData] = useState<CloudData | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [isConnected, setIsConnected] = useState(false);
+const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
+  const [isRecording, setIsRecording] = useState(false);
+  const [streamError, setStreamError] = useState(false);
+  
+  // Construct the stream URL. 
+  const streamUrl = `http://${ip}:81/stream`; 
 
-  useEffect(() => {
-    // Connect to Supabase Realtime
-    const unsubscribe = subscribeToStream(
-      creds,
-      (newData) => {
-        setData(newData);
-        setLastUpdate(new Date());
-        setIsConnected(true);
-      },
-      (err) => {
-        console.error("Stream disconnected", err);
-        setIsConnected(false);
-      }
-    );
+  const handleToggleRecord = async () => {
+    // Optimistic UI update or wait for result? 
+    // Let's wait for result to ensure device actually received command.
+    const targetState = !isRecording;
+    
+    const success = await toggleSdRecording(ip, targetState);
+    
+    if (success) {
+      setIsRecording(targetState);
+    } else {
+      alert("Failed to send command to camera. Please check:\n1. You are connected to the ESP32 WiFi.\n2. The ESP32 is powered on.");
+    }
+  };
 
-    return () => unsubscribe();
-  }, [creds]);
+  const handleReload = () => {
+    setStreamError(false);
+    // Force image reload by appending timestamp
+    const img = document.getElementById('mjpeg-stream') as HTMLImageElement;
+    if (img) {
+      img.src = `${streamUrl}?t=${new Date().getTime()}`;
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen max-w-6xl mx-auto p-4 md:p-6 gap-6">
       {/* Header */}
       <header className="flex justify-between items-center bg-gray-800 p-4 rounded-xl shadow-lg border border-gray-700">
         <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-          <h2 className="font-bold text-lg text-white">Supabase Monitor</h2>
-        </div>
-        <div className="text-xs text-gray-400 font-mono hidden sm:block">
-           Last Update: {lastUpdate.toLocaleTimeString()}
+          <div className="flex flex-col">
+            <h2 className="font-bold text-lg text-white">ESP32-CAM SD Controller</h2>
+            <span className="text-xs font-mono text-gray-400">IP: {ip}</span>
+          </div>
         </div>
         <button 
           onClick={onDisconnect}
-          className="text-sm text-red-400 hover:text-red-300 font-semibold px-3 py-1 hover:bg-red-900/20 rounded transition-colors"
+          className="text-sm text-gray-400 hover:text-white font-semibold px-3 py-1 hover:bg-gray-700 rounded transition-colors"
         >
           Disconnect
         </button>
       </header>
 
+      {/* Main Content */}
       <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
         
-        {/* Left Column: Image View */}
-        <div className="flex-[2] bg-black rounded-2xl overflow-hidden shadow-2xl relative border border-gray-700 flex items-center justify-center group min-h-[300px]">
-          {data?.photo ? (
+        {/* Stream View */}
+        <div className="flex-[3] bg-black rounded-2xl overflow-hidden shadow-2xl relative border border-gray-700 group flex items-center justify-center">
+          {!streamError ? (
             <img 
-              src={`data:image/jpeg;base64,${data.photo}`} 
-              alt="ESP32 Stream" 
+              id="mjpeg-stream"
+              src={streamUrl} 
+              alt="Live Stream" 
               className="w-full h-full object-contain"
+              onError={() => setStreamError(true)}
             />
           ) : (
-            <div className="text-center p-8 text-gray-500 animate-pulse">
-              <p>Waiting for data from Supabase...</p>
-              <p className="text-xs mt-2 text-gray-600">Ensure ESP32 is running and table 'camera_stream' exists</p>
+            <div className="text-center p-8 text-gray-400">
+              <p className="text-xl font-bold mb-2">Stream Offline</p>
+              <p className="text-sm mb-4">Cannot connect to {streamUrl}</p>
+              <button 
+                onClick={handleReload}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm"
+              >
+                Retry Connection
+              </button>
             </div>
           )}
-          
-          <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-2 rounded-lg text-xs font-mono text-white">
-            <div>SOURCE: Supabase Realtime</div>
-            <div>TYPE: Base64 JPEG</div>
+
+          {/* Recording Indicator Overlay */}
+          {isRecording && (
+            <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500/90 text-white px-3 py-1.5 rounded-full backdrop-blur-sm animate-pulse">
+              <div className="w-3 h-3 bg-white rounded-full"></div>
+              <span className="text-xs font-bold tracking-wider">REC</span>
+            </div>
+          )}
+
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
+             <div className="text-xs text-gray-300">
+               <p>MJPEG STREAM</p>
+             </div>
           </div>
         </div>
 
-        {/* Right Column: Sensor Data */}
+        {/* Controls */}
         <div className="flex-1 flex flex-col gap-4">
+          
+          {/* Action Card */}
           <div className="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700">
-            <h3 className="text-xl font-bold text-white mb-4">Sensor Status</h3>
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+              SD Card Controls
+            </h3>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-700/50 p-4 rounded-xl">
-                <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Temperature</p>
-                <div className="text-2xl font-mono text-green-400">
-                  {data?.sensor?.temperature ? `${data.sensor.temperature}°C` : '--'}
-                </div>
-              </div>
-              <div className="bg-gray-700/50 p-4 rounded-xl">
-                <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Humidity</p>
-                <div className="text-2xl font-mono text-blue-400">
-                  {data?.sensor?.humidity ? `${data.sensor.humidity}%` : '--'}
-                </div>
-              </div>
-              <div className="bg-gray-700/50 p-4 rounded-xl col-span-2">
-                <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">WiFi Signal (RSSI)</p>
-                <div className="flex items-center gap-2">
-                   <div className="h-2 flex-1 bg-gray-600 rounded-full overflow-hidden">
-                     <div 
-                        className="h-full bg-green-500" 
-                        style={{ width: `${Math.min(100, Math.max(0, (100 + (data?.sensor?.wifi_signal || -100)) * 2))}%` }}
-                     ></div>
-                   </div>
-                   <span className="font-mono text-white">{data?.sensor?.wifi_signal || -0} dBm</span>
-                </div>
-              </div>
-            </div>
+            <p className="text-sm text-gray-400 mb-6">
+              Toggle onboard recording. Files are saved to the SD card inserted in the module.
+            </p>
+
+            <button
+              onClick={handleToggleRecord}
+              className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform active:scale-[0.98] flex items-center justify-center gap-3 ${
+                isRecording 
+                  ? 'bg-red-600 hover:bg-red-700 text-white ring-2 ring-red-400 ring-offset-2 ring-offset-gray-800' 
+                  : 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600'
+              }`}
+            >
+              {isRecording ? (
+                <>
+                  <div className="w-4 h-4 bg-white rounded-sm"></div>
+                  STOP RECORDING
+                </>
+              ) : (
+                <>
+                  <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                  START RECORDING
+                </>
+              )}
+            </button>
           </div>
 
-          <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 text-sm text-gray-500">
-            <p>
-              Note: Using Supabase Realtime.
-              Keep image size small (QVGA) to avoid payload limits.
-            </p>
+          {/* Info Card */}
+          <div className="bg-gray-900/50 p-5 rounded-xl border border-gray-800 text-xs text-gray-500 leading-relaxed">
+            <strong className="block text-gray-400 mb-2">Instructions:</strong>
+            1. Ensure ESP32 is powered and red LED (if any) indicates readiness.<br/>
+            2. Connect your device to the <strong>ESP32-CAM-Connect</strong> WiFi.<br/>
+            3. Recording saves AVI or JPEG sequences to SD root.<br/>
+            4. If stream lags, refresh the page.
           </div>
+
         </div>
       </div>
     </div>

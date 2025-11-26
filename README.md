@@ -1,44 +1,45 @@
-# ESP32-CAM Supabase Controller
+# ESP32-CAM SD Card Controller
 
-## Quick Start
+A React interface to control an ESP32-CAM on the local network, focusing on MJPEG streaming and SD card recording.
 
-1.  **Install Dependencies**
+## Firmware Code
+
+**The complete Arduino sketch is included in this project.**
+See the file: `ESP32-CAM.ino`.
+
+1. Open `ESP32-CAM.ino` in Arduino IDE.
+2. Select Board: **AI Thinker ESP32-CAM**.
+3. Upload to your board.
+
+## Requirements
+
+1.  **Network**: Connect your Phone/Laptop to the ESP32's WiFi Hotspot:
+    *   **SSID**: `ESP32-CAM-Connect`
+    *   **Password**: `password123`
+2.  **Hardware**: ESP32-CAM with a valid SD Card inserted.
+3.  **URL**: The App should connect to `192.168.4.1`.
+
+## How to Run the App
+
+1.  Install dependencies:
     ```bash
     npm install
-    npm install @supabase/supabase-js
     ```
-
-2.  **Supabase Setup**
-    *   Create a project at [supabase.com](https://supabase.com).
-    *   Go to **SQL Editor** and run:
-        ```sql
-        create table camera_stream (
-          id int primary key,
-          photo text,
-          sensor jsonb,
-          updated_at timestamptz default now()
-        );
-        insert into camera_stream (id, photo, sensor) values (1, '', '{}');
-        alter publication supabase_realtime add table camera_stream;
-        ```
-    *   Get your **Project URL** and **Anon Key** from Project Settings > API.
-
-3.  **Run Development Server**
+2.  Start local server:
     ```bash
     npm run dev
     ```
+3.  Enter the IP address `192.168.4.1` in the app.
 
-4.  **Flash ESP32**
-    *   Use the provided Arduino code.
-    *   Update `supabase_url` and `supabase_key` in the C++ code.
-    *   The ESP32 must have internet access (via Hotspot or Router).
+## ESP32 API Expectations
+
+1.  **`GET /stream`** (Port 81)
+    *   Returns: `multipart/x-mixed-replace` (MJPEG Stream).
+2.  **`GET /record?val=1`** (Port 80)
+    *   Start SD Card recording.
+3.  **`GET /record?val=0`** (Port 80)
+    *   Stop SD Card recording.
 
 ## Troubleshooting
 
-*   **No Image**:
-    *   Verify the table name is `camera_stream`.
-    *   Ensure Realtime is enabled (`alter publication...`).
-    *   If images are too large (HD/SVGA), Supabase Realtime might drop the message. Use QVGA (320x240).
-*   **Connection Failed**:
-    *   Check if your Anon Key is correct.
-    *   Check browser console for 401/404 errors.
+*   **"Failed to fetch"**: Make sure you are connected to the ESP32 WiFi (192.168.4.1) and mobile data is turned OFF on your phone (sometimes phones prefer mobile data over a WiFi with no internet).

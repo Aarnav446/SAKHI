@@ -1,90 +1,62 @@
+import { CameraStatus } from '../types';
+
 /**
- * SERVICE LAYER: SUPABASE REALTIME
+ * SERVICE LAYER: DIRECT IP HTTP
  * 
- * We use the Supabase JS client to listen to Postgres changes.
- * The ESP32 updates row id=1 via REST API.
- * The Frontend receives the 'UPDATE' event via WebSocket.
+ * Communicates directly with the ESP32-CAM web server.
+ * Requires the React App and ESP32 to be on the same local network.
  */
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { CloudData, SupabaseCredentials } from '../types';
-
-let supabase: SupabaseClient | null = null;
-let subscription: any = null;
-
-/**
- * Initializes the Supabase client and checks connection
- */
-export const checkConnection = async (creds: SupabaseCredentials): Promise<boolean> => {
+export const checkConnection = async (ip: string): Promise<boolean> => {
   try {
-    supabase = createClient(creds.url, creds.key);
+    // We try to fetch the status endpoint with a short timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
     
-    // Simple query to verify credentials and table existence
-    const { data, error } = await supabase
-      .from('camera_stream')
-      .select('id')
-      .eq('id', 1)
-      .single();
-      
-    if (error) throw error;
-    return true;
+    // We use 'cors' mode because the ESP32 is programmed to return Access-Control-Allow-Origin: *
+    const response = await fetch(`http://${ip}/status`, { 
+      method: 'GET',
+      signal: controller.signal,
+      mode: 'cors',
+      credentials: 'omit'
+    });
+    
+    clearTimeout(timeoutId);
+    return response.ok;
   } catch (e) {
-    console.error("Supabase connection check failed:", e);
+    console.warn("Connection check failed:", e);
     return false;
   }
 };
 
-/**
- * Subscribes to Realtime changes on the 'camera_stream' table.
- */
-export const subscribeToStream = (
-  creds: SupabaseCredentials, 
-  onData: (data: CloudData) => void,
-  onError: (err: any) => void
-) => {
-  if (!supabase) {
-    supabase = createClient(creds.url, creds.key);
-  }
-
-  // Clean up previous subscription
-  if (subscription) {
-    supabase.removeChannel(subscription);
-  }
-
-  // Subscribe to UPDATE events on row with id=1
-  const channel = supabase.channel('esp32-stream')
-    .on(
-      'postgres_changes',
-      { 
-        event: 'UPDATE', 
-        schema: 'public', 
-        table: 'camera_stream', 
-        filter: 'id=eq.1' 
-      },
-      (payload) => {
-        // payload.new contains the updated row
-        const newData = payload.new as any;
-        // Map database columns to our CloudData type
-        onData({
-          photo: newData.photo,
-          sensor: newData.sensor
-        });
-      }
-    )
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log("Connected to Supabase Realtime");
-      }
-      if (status === 'CHANNEL_ERROR') {
-        onError("Failed to connect to Realtime channel");
-      }
+export const toggleSdRecording = async (ip: string, shouldRecord: boolean): Promise<boolean> => {
+  try {
+    // Sends command to ESP32: /record?val=1 (Start) or /record?val=0 (Stop)
+    const val = shouldRecord ? 1 : 0;
+    
+    const response = await fetch(`http://${ip}/record?val=${val}`, { 
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
     });
 
-  subscription = channel;
-
-  return () => {
-    if (supabase && subscription) {
-      supabase.removeChannel(subscription);
+    if (!response.ok) {
+      console.error(`Server returned status: ${response.status}`);
+      return false;
     }
-  };
+
+    return true;
+  } catch (e) {
+    console.error("Failed to toggle recording:", e);
+    return false;
+  }
+};
+
+export const getStreamUrl = (ip: string): string => {
+  // Common port for stream is 81 on typical ESP32-CAM examples
+  return `http://${ip}:81/stream`; 
+};
+
+export const getControlUrl = (ip: string): string => {
+  return `http://${ip}`;
 };

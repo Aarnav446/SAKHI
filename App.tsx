@@ -1,26 +1,24 @@
 import React, { useState } from 'react';
 import ConnectForm from './components/ConnectForm';
 import CameraView from './components/CameraView';
-import { SupabaseCredentials } from './types';
 
 const App: React.FC = () => {
-  // State to store the Supabase Credentials
-  const [creds, setCreds] = useState<SupabaseCredentials | null>(null);
+  const [deviceIp, setDeviceIp] = useState<string | null>(null);
 
-  const handleConnect = (credentials: SupabaseCredentials) => {
-    setCreds(credentials);
+  const handleConnect = (ip: string) => {
+    setDeviceIp(ip);
   };
 
   const handleDisconnect = () => {
-    setCreds(null);
+    setDeviceIp(null);
   };
 
   return (
     <div className="min-h-screen w-full">
-      {!creds ? (
+      {!deviceIp ? (
         <ConnectForm onConnect={handleConnect} />
       ) : (
-        <CameraView creds={creds} onDisconnect={handleDisconnect} />
+        <CameraView ip={deviceIp} onDisconnect={handleDisconnect} />
       )}
     </div>
   );
