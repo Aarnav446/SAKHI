@@ -53,8 +53,8 @@ export const toggleSdRecording = async (ip: string, shouldRecord: boolean): Prom
 };
 
 export const getStreamUrl = (ip: string): string => {
-  // Common port for stream is 81 on typical ESP32-CAM examples
-  return `http://${ip}:81/stream`; 
+  // User's provided code runs stream on Port 80, not 81
+  return `http://${ip}/stream`; 
 };
 
 export const getControlUrl = (ip: string): string => {

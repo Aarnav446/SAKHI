@@ -1,6 +1,6 @@
 # ESP32-CAM SD Card Controller
 
-A React interface to control an ESP32-CAM on the local network, focusing on MJPEG streaming and SD card recording.
+A React interface to control an ESP32-CAM on the local network.
 
 ## Firmware Code
 
@@ -11,35 +11,17 @@ See the file: `ESP32-CAM.ino`.
 2. Select Board: **AI Thinker ESP32-CAM**.
 3. Upload to your board.
 
-## Requirements
+## Connection Details
 
 1.  **Network**: Connect your Phone/Laptop to the ESP32's WiFi Hotspot:
-    *   **SSID**: `ESP32-CAM-Connect`
-    *   **Password**: `password123`
-2.  **Hardware**: ESP32-CAM with a valid SD Card inserted.
-3.  **URL**: The App should connect to `192.168.4.1`.
-
-## How to Run the App
-
-1.  Install dependencies:
-    ```bash
-    npm install
-    ```
-2.  Start local server:
-    ```bash
-    npm run dev
-    ```
-3.  Enter the IP address `192.168.4.1` in the app.
-
-## ESP32 API Expectations
-
-1.  **`GET /stream`** (Port 81)
-    *   Returns: `multipart/x-mixed-replace` (MJPEG Stream).
-2.  **`GET /record?val=1`** (Port 80)
-    *   Start SD Card recording.
-3.  **`GET /record?val=0`** (Port 80)
-    *   Stop SD Card recording.
+    *   **SSID**: `esp8266`
+    *   **Password**: `1234567890`
+2.  **IP Address**: The App will default to `192.168.4.1`.
+3.  **SD Card**: Ensure a FAT32 formatted SD card is inserted.
 
 ## Troubleshooting
 
-*   **"Failed to fetch"**: Make sure you are connected to the ESP32 WiFi (192.168.4.1) and mobile data is turned OFF on your phone (sometimes phones prefer mobile data over a WiFi with no internet).
+*   **"Failed to fetch"**: 
+    1. Ensure you are connected to the `esp8266` WiFi.
+    2. **Turn OFF Mobile Data** on your phone. Android/iOS often block local IPs if they have a data connection active.
+*   **Recording Lag**: Writing to SD card while streaming is heavy on the ESP32. If the stream lags during recording, this is normal hardware limitation.

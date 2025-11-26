@@ -34,7 +34,10 @@ const ConnectForm: React.FC<ConnectFormProps> = ({ onConnect }) => {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-white mb-2">Connect Camera</h1>
-          <p className="text-gray-400 text-sm">Connect to "ESP32-CAM-Connect" WiFi first</p>
+          <p className="text-gray-400 text-sm">
+            Connect to WiFi: <strong>esp8266</strong><br/>
+            Password: <strong>1234567890</strong>
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

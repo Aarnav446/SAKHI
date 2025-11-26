@@ -11,7 +11,10 @@ const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
   const [streamError, setStreamError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   
-  // Use a ref to track if we should keep retrying
+  // The ESP32 code is single-threaded. We sometimes need to pause the image stream
+  // (by breaking the image src) so the browser can send the "Start Record" fetch command.
+  const [pauseStreamForCommand, setPauseStreamForCommand] = useState(false);
+
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Construct the stream URL with a timestamp to prevent caching
@@ -23,17 +26,29 @@ const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
   const [currentStreamUrl, setCurrentStreamUrl] = useState(getTimestampedUrl());
 
   const handleToggleRecord = async () => {
+    // 1. Pause stream to free up ESP32 socket
+    setPauseStreamForCommand(true);
+    
+    // 2. Wait a brief moment for socket to close
+    await new Promise(r => setTimeout(r, 300));
+
     const targetState = !isRecording;
     const success = await toggleSdRecording(ip, targetState);
     
     if (success) {
       setIsRecording(targetState);
     } else {
-      alert("Failed to send command to camera. Please check:\n1. You are connected to the ESP32 WiFi.\n2. The ESP32 is powered on.\n3. Mobile Data is OFF.");
+      alert("Failed to send command. \n\nTip: The camera might be busy streaming. We paused the stream briefly to try sending the command, but it failed.");
     }
+
+    // 3. Resume stream
+    setPauseStreamForCommand(false);
+    handleReload(); // Refresh stream connection
   };
 
   const handleStreamError = () => {
+    if (pauseStreamForCommand) return; // Ignore errors while we are intentionally pausing
+
     setStreamError(true);
     // Auto-retry after 3 seconds if error occurs
     if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
@@ -79,7 +94,7 @@ const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
         
         {/* Stream View */}
         <div className="flex-[3] bg-black rounded-2xl overflow-hidden shadow-2xl relative border border-gray-700 group flex items-center justify-center min-h-[300px]">
-          {!streamError ? (
+          {!streamError && !pauseStreamForCommand ? (
             <img 
               key={retryCount} // Force re-render on retry
               src={currentStreamUrl} 
@@ -89,20 +104,26 @@ const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
             />
           ) : (
             <div className="text-center p-8 text-gray-400 flex flex-col items-center">
-              <svg className="w-12 h-12 mb-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-              <p className="text-xl font-bold mb-2">Stream Offline</p>
-              <p className="text-sm mb-4">Connecting to {ip}:81...</p>
-              <p className="text-xs text-yellow-500 mb-6 max-w-xs">
-                Tip: Turn OFF "Mobile Data" on your phone. Android may block local WiFi if it has no internet.
-              </p>
-              <button 
-                onClick={handleReload}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all"
-              >
-                Retry Now
-              </button>
+              {pauseStreamForCommand ? (
+                 <div className="animate-pulse text-blue-400 font-bold">Sending Command...</div>
+              ) : (
+                <>
+                  <svg className="w-12 h-12 mb-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                  <p className="text-xl font-bold mb-2">Stream Offline</p>
+                  <p className="text-sm mb-4">Connecting to {ip}...</p>
+                  <p className="text-xs text-yellow-500 mb-6 max-w-xs">
+                    Tip: Turn OFF "Mobile Data" on your phone.
+                  </p>
+                  <button 
+                    onClick={handleReload}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all"
+                  >
+                    Retry Now
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -128,11 +149,12 @@ const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
             </h3>
             
             <p className="text-sm text-gray-400 mb-6">
-              Toggle onboard recording. Files are saved to the SD card inserted in the module.
+              Toggle onboard recording. The stream will pause briefly to ensure the command is received.
             </p>
 
             <button
               onClick={handleToggleRecord}
+              disabled={pauseStreamForCommand}
               className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform active:scale-[0.98] flex items-center justify-center gap-3 ${
                 isRecording 
                   ? 'bg-red-600 hover:bg-red-700 text-white ring-2 ring-red-400 ring-offset-2 ring-offset-gray-800' 
@@ -156,10 +178,9 @@ const CameraView: React.FC<CameraViewProps> = ({ ip, onDisconnect }) => {
           {/* Info Card */}
           <div className="bg-gray-900/50 p-5 rounded-xl border border-gray-800 text-xs text-gray-500 leading-relaxed">
             <strong className="block text-gray-400 mb-2">Instructions:</strong>
-            1. Ensure ESP32 is powered and red LED (if any) indicates readiness.<br/>
-            2. Connect your device to the <strong>ESP32-CAM-Connect</strong> WiFi.<br/>
-            3. Recording saves AVI or JPEG sequences to SD root.<br/>
-            4. If stream fails, check if Mobile Data is OFF.
+            1. Connect to WiFi <strong>esp8266</strong> (Pass: 1234567890).<br/>
+            2. Recording saves sequences to SD root.<br/>
+            3. The stream resolution is SVGA to balance speed and quality.
           </div>
 
         </div>
